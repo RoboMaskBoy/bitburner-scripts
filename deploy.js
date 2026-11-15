@@ -1,18 +1,21 @@
-/** 司令塔 v4: ネットワーク全体を走査し、root を取って worker を配備する。
+/** 司令塔 v4.1: ネットワーク全体を走査し、root を取って worker を配備する。
  *  使い方: run deploy.js [--quiet]
  *  home から scan をたどって全サーバーを列挙する（深さ制限なし）。
  *  ポート開けプログラム（BruteSSH.exe 等）を home に持っていれば、
  *  NUKE の前に自動でポートを開ける。
  *  worker の配備は、自分の Hacking レベルが足りているサーバーだけに行う。
  *  --quiet を付けると報告はログ行き（manager.js からの定期実行用）。
+ *  v4.1: 標的のスコアを本式ベースの定常モデルに差し替えた（検証 2026-11-16）。
+ *    本体の式（src/Hacking.ts）を移植し、実機のライブ値で
+ *    「整地済みの標的を盗んで戻す1サイクルの稼ぎ ÷ スレッド秒」を計算する。
+ *    旧式（最大所持金 ÷ 最低警戒度）は必要レベルを見ないため、高レベル帯で
+ *    大金持ちの高レベルサーバーを過大評価する（試算で約3割の損）。
+ *    あわせて、root 取得 → 標的選定 → 配備の順に直し、その場で root が
+ *    取れたサーバーも同じ回の候補に入るようにした。
  *  v4: 全 worker の標的を「一番金持ちのサーバー」1つに統一した。
- *    各 worker が自分のいる貧弱なサーバーを叩く形では稼ぎが頭打ちになるため。
- *    標的の選定は、root 済み・レベル到達済み・所持金のあるサーバーの中から
- *    「最大所持金 ÷ 最低警戒度」が最大の物（金が多く、回転が速い所）。
  *  v3.4: worker が同じスレッド数・同じ標的で稼働中なら配備し直さない。
  *  v3.2: cloud.getServerNames（RAM 1.05GB）を外し、home の RAM に収まるようにした。
  *    クラウドサーバーを買ったら、その名前を下の EXCLUDE に足すこと（0GB 方式）。
- *  v3.1: 3.0.0 で削除された getPurchasedServers を cloud.getServerNames に差し替え。
  *  @param {NS} ns */
 export async function main(ns) {
   const quiet = ns.args.includes("--quiet");
@@ -46,34 +49,10 @@ export async function main(ns) {
     ["SQLInject.exe", (t) => ns.sqlinject(t)],
   ].filter(([file]) => ns.fileExists(file, "home"));
 
+  // 第1パス: root 取得
   let rooted = 0;
-  let deployed = 0;
-  let totalThreads = 0;
-
-  // 標的の選定: root 済み・レベル到達済み・所持金のあるサーバーの中から
-  // 「最大所持金 ÷ 最低警戒度」が最大の物を、全 worker 共通の標的にする
-  let bestTarget = null;
-  let bestScore = -1;
-  for (const host of all) {
-    if (purchased.has(host)) continue;
-    if (!ns.hasRootAccess(host)) continue;
-    if (ns.getServerRequiredHackingLevel(host) > myLevel) continue;
-    const maxMoney = ns.getServerMaxMoney(host);
-    if (maxMoney <= 0) continue;
-    const score = maxMoney / ns.getServerMinSecurityLevel(host);
-    if (score > bestScore) {
-      bestScore = score;
-      bestTarget = host;
-    }
-  }
-  if (bestTarget) {
-    say(`標的: ${bestTarget}（最大所持金 $${(ns.getServerMaxMoney(bestTarget) / 1e6).toFixed(2)}m）に全火力を集中する`);
-  }
-
   for (const target of all) {
     if (purchased.has(target)) continue;
-
-    // root がなければ、まず持っているプログラムでポートを開けてから NUKE
     if (!ns.hasRootAccess(target)) {
       for (const [, open] of openers) open(target);
       const ports = ns.getServerNumPortsRequired(target);
@@ -84,15 +63,41 @@ export async function main(ns) {
       say(`${target}: NUKE 成功、root 取得`);
     }
     if (ns.hasRootAccess(target)) rooted++;
+  }
+
+  // 第2パス: 標的の選定（本式ベースの定常モデル、ライブ値で計算）
+  const player = ns.getPlayer();
+  let bestTarget = null;
+  let bestInfo = null;
+  for (const host of all) {
+    if (purchased.has(host)) continue;
+    if (!ns.hasRootAccess(host)) continue;
+    if (ns.getServerRequiredHackingLevel(host) > myLevel) continue;
+    if (ns.getServerMaxMoney(host) <= 0) continue;
+    const info = targetScore(ns, host, player);
+    if (info.score > 0 && (bestInfo === null || info.score > bestInfo.score)) {
+      bestInfo = info;
+      bestTarget = host;
+    }
+  }
+  if (bestTarget) {
+    say(
+      `標的: ${bestTarget}（最大所持金 $${(ns.getServerMaxMoney(bestTarget) / 1e6).toFixed(2)}m / 成功率 ${Math.round(bestInfo.chance * 100)}% / hack ${bestInfo.t.toFixed(0)}秒）に全火力を集中する`,
+    );
+  }
+
+  // 第3パス: worker の配備（叩く相手は全員共通の標的）
+  let deployed = 0;
+  let totalThreads = 0;
+  for (const target of all) {
+    if (purchased.has(target)) continue;
+    if (!ns.hasRootAccess(target)) continue;
 
     // レベルが足りないサーバーは root だけ取って、配備はレベルが届いてから
-    const required = ns.getServerRequiredHackingLevel(target);
-    if (required > myLevel) {
+    if (ns.getServerRequiredHackingLevel(target) > myLevel) {
       continue;
     }
 
-    // worker を送り込んで、そのサーバーの RAM いっぱいに起動する。
-    // 叩く相手はそのサーバー自身ではなく、全員共通の標的（bestTarget）。
     await ns.scp(worker, target, "home");
     const maxRam = ns.getServerMaxRam(target);
     const threads = Math.floor(maxRam / workerRam);
@@ -114,4 +119,35 @@ export async function main(ns) {
     say(`${target}: worker を ${threads} スレッドで配備`);
   }
   say(`配備おわり: 走査 ${all.length} 台 / root ${rooted} 台 / worker 配備 ${deployed} 台・${totalThreads} スレッド`);
+}
+
+/** 標的の稼ぎ速度を本体の式で見積もる。
+ *  整地済み（警戒度 = 最低値）の標的について、所持金を半分盗んで満タンに
+ *  戻す1サイクルを考え、成功率込みの稼ぎをスレッド秒で割る。
+ *  式は src/Hacking.ts（成功率・盗める割合・所要時間）と
+ *  src/Server/formulas/grow.ts（成長率）の移植。倍率は実機の値を使う。 */
+function targetScore(ns, host, player) {
+  const H = player.skills.hacking;
+  const M = ns.getServerMaxMoney(host);
+  const req = ns.getServerRequiredHackingLevel(host);
+  const D = ns.getServerMinSecurityLevel(host);
+  const growth = ns.getServerGrowth(host);
+  const intBonus = 1 + Math.pow(player.skills.intelligence, 0.8) / 600;
+
+  const t = (5 * (2.5 * req * D + 500)) / (H + 50) / (player.mults.hacking_speed * intBonus);
+  let chance = ((1.75 * H - req) / (1.75 * H)) * ((100 - D) / 100) * player.mults.hacking_chance * intBonus;
+  chance = Math.min(1, Math.max(0, chance));
+  let f = (((100 - D) / 100) * (H - (req - 1))) / H / 240 * player.mults.hacking_money;
+  f = Math.min(1, Math.max(0, f));
+  if (chance <= 0 || f <= 0) return { score: 0, chance, t };
+
+  const glog =
+    Math.min(Math.log1p(0.03 / D), 0.00349388925425578) * (growth / 100) * player.mults.hacking_grow;
+  if (glog <= 0) return { score: 0, chance, t };
+  const Nh = Math.log(0.5) / Math.log(1 - f); // 所持金を半分盗む hack スレッド数
+  const Ng = Math.log(2) / glog; // 倍に戻す grow スレッド数
+  const Nw = (0.002 * Nh + 0.004 * Ng) / 0.05; // 警戒度の上昇を相殺する weaken スレッド数
+  const threadSeconds = t * (Nh + 3.2 * Ng + 4 * Nw);
+  const score = (chance * 0.5 * 0.85 * M) / threadSeconds;
+  return { score, chance, t };
 }
