@@ -1,4 +1,4 @@
-/** solve.js v1: ネットワーク全体を巡回し、コーディング契約をその場で解く。
+/** solve.js v1.1: ネットワーク全体を巡回し、コーディング契約をその場で解く。
  *  契約ファイルは移動できないが、専用 API はサーバー名を指定して
  *  種類・データを読み、解答を提出できる。だから巡回型にする。
  *  使い方: RAM の大きいサーバーで run solve.js
@@ -51,11 +51,28 @@ function stockTraderI(prices) {
   return best;
 }
 
+// 暗号化 I: カエサル暗号。data = [平文, 左シフト量]。
+// 各文字をアルファベット上で左へずらす（A は Z 側へ回る）。空白はそのまま。
+function caesarCipher(data) {
+  const [text, shift] = data;
+  let out = "";
+  for (const ch of text) {
+    if (ch === " ") {
+      out += " ";
+    } else {
+      const code = ((ch.charCodeAt(0) - 65 - shift) % 26 + 26) % 26;
+      out += String.fromCharCode(65 + code);
+    }
+  }
+  return out;
+}
+
 const SOLVERS = {
   "Total Ways to Sum": totalWaysToSum,
   "Find Largest Prime Factor": largestPrimeFactor,
   "Subarray with Maximum Sum": maxSubarraySum,
   "Algorithmic Stock Trader I": stockTraderI,
+  "Encryption I: Caesar Cipher": caesarCipher,
 };
 
 export async function main(ns) {
