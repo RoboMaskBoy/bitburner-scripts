@@ -1,12 +1,15 @@
-/** 収集屋 v1.1: ネットワーク全体を歩き、.js 以外のファイル（.lit の読み物、
+/** 収集屋 v1.2: ネットワーク全体を歩き、.js 以外のファイル（.lit の読み物、
  *  .txt、.msg など）を home にかき集める。
- *  使い方: run gather.js
+ *  使い方: run gather.js [--quiet]
  *  .exe は仕様上コピーできないので対象外。.script はコードなので対象外。
  *  .cct（コーディング契約）は scp では運べない仕様なので、回収せず
  *  「どこにあるか」だけ報告する（その場で挑戦する物）。
  *  home に同名ファイルが既にある場合は飛ばす（冪等）。
+ *  --quiet を付けると報告はログ行き（manager.js からの定期実行用）。
  *  @param {NS} ns */
 export async function main(ns) {
+  const quiet = ns.args.includes("--quiet");
+  const say = (msg) => (quiet ? ns.print(msg) : ns.tprint(msg));
   const skipHosts = new Set(["home", "darkweb"]);
 
   // home を起点にネットワーク全体を列挙する
@@ -32,15 +35,15 @@ export async function main(ns) {
       if (file.endsWith(".js") || file.endsWith(".script") || file.endsWith(".exe")) continue;
       if (file.endsWith(".cct")) {
         contracts++;
-        ns.tprint(`${host}: ${file} を発見（契約は運べないので、その場で挑戦する物）`);
+        say(`${host}: ${file} を発見（契約は運べないので、その場で挑戦する物）`);
         continue;
       }
       if (ns.fileExists(file, "home")) continue;
       if (await ns.scp(file, "home", host)) {
         gathered++;
-        ns.tprint(`${host}: ${file} を回収`);
+        say(`${host}: ${file} を回収`);
       }
     }
   }
-  ns.tprint(`回収おわり: ${gathered} 件を home に集めた / 契約 ${contracts} 件を発見`);
+  say(`回収おわり: ${gathered} 件を home に集めた / 契約 ${contracts} 件を発見`);
 }

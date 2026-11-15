@@ -1,9 +1,10 @@
-/** solve.js v1.1: ネットワーク全体を巡回し、コーディング契約をその場で解く。
+/** solve.js v1.2: ネットワーク全体を巡回し、コーディング契約をその場で解く。
  *  契約ファイルは移動できないが、専用 API はサーバー名を指定して
  *  種類・データを読み、解答を提出できる。だから巡回型にする。
- *  使い方: RAM の大きいサーバーで run solve.js
+ *  使い方: run solve.js [--quiet]（RAM 約22GB が必要）
  *  対応済みの種類だけ挑戦し、未対応の種類は場所と名前だけ報告する
  *  （試行回数を無駄にしないため）。
+ *  --quiet を付けると報告はログ行き（manager.js からの定期実行用）。
  *  @param {NS} ns */
 
 // 分割数: n を正の整数の和で書く方法の数（2項以上）。DP で数える。
@@ -76,6 +77,8 @@ const SOLVERS = {
 };
 
 export async function main(ns) {
+  const quiet = ns.args.includes("--quiet");
+  const say = (msg) => (quiet ? ns.print(msg) : ns.tprint(msg));
   const start = ns.getHostname();
   const seen = new Set([start]);
   const queue = [start];
@@ -99,7 +102,7 @@ export async function main(ns) {
       const solver = SOLVERS[type];
       if (!solver) {
         unknown++;
-        ns.tprint(`未対応: ${type} @ ${host} (${file})`);
+        say(`未対応: ${type} @ ${host} (${file})`);
         continue;
       }
       const data = ns.codingcontract.getData(file, host);
@@ -107,11 +110,11 @@ export async function main(ns) {
       const reward = ns.codingcontract.attempt(answer, file, host);
       if (reward) {
         solved++;
-        ns.tprint(`解決: ${type} @ ${host} → ${reward}`);
+        say(`解決: ${type} @ ${host} → ${reward}`);
       } else {
-        ns.tprint(`失敗: ${type} @ ${host} (答え ${answer} で提出したが弾かれた)`);
+        say(`失敗: ${type} @ ${host} (答え ${answer} で提出したが弾かれた)`);
       }
     }
   }
-  ns.tprint(`巡回おわり: 解決 ${solved} 件 / 未対応 ${unknown} 件`);
+  say(`巡回おわり: 解決 ${solved} 件 / 未対応 ${unknown} 件`);
 }

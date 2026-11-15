@@ -1,10 +1,12 @@
-/** 司令塔 v3.3: ネットワーク全体を走査し、root を取って worker を配備する。
+/** 司令塔 v3.4: ネットワーク全体を走査し、root を取って worker を配備する。
  *  使い方: run deploy.js [--quiet]
  *  home から scan をたどって全サーバーを列挙する（深さ制限なし）。
  *  ポート開けプログラム（BruteSSH.exe 等）を home に持っていれば、
  *  NUKE の前に自動でポートを開ける。
  *  worker の配備は、自分の Hacking レベルが足りているサーバーだけに行う。
  *  --quiet を付けると報告はログ行き（manager.js からの定期実行用）。
+ *  v3.4: worker が同じスレッド数で稼働中なら配備し直さない（定期実行で
+ *    稼働中の worker を落として組み直す無駄と中断をなくす）。
  *  v3.2: cloud.getServerNames（RAM 1.05GB）を外し、home の RAM に収まるようにした。
  *    クラウドサーバーを買ったら、その名前を下の EXCLUDE に足すこと（0GB 方式）。
  *  v3.1: 3.0.0 で削除された getPurchasedServers を cloud.getServerNames に差し替え。
@@ -72,6 +74,16 @@ export async function main(ns) {
     const threads = Math.floor(maxRam / workerRam);
     if (threads < 1) {
       continue; // RAM 0 のサーバーは root のみ（backdoor の踏み台にはなる）
+    }
+    // 同じスレッド数で稼働中なら、そのまま使う（落として組み直さない）
+    const runningThreads = ns
+      .ps(target)
+      .filter((p) => p.filename === worker)
+      .reduce((sum, p) => sum + p.threads, 0);
+    if (runningThreads === threads) {
+      deployed++;
+      totalThreads += threads;
+      continue;
     }
     ns.killall(target);
     ns.exec(worker, target, threads, target);
