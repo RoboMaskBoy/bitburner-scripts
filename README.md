@@ -14,3 +14,5 @@ wget https://raw.githubusercontent.com/RoboMaskBoy/bitburner-scripts/main/<フ�
 ## スクリプト一覧
 
 - `first-hack.js` — n00dles固定の weaken / grow / hack 判断ループ（最初のスクリプト）
+- `hack-worker.js` — 標的を引数で受け取る汎用 worker
+- `deploy.js` — 隣接サーバーを走査し、root取得と worker 配備を自動でやる司令塔
