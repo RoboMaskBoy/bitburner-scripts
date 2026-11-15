@@ -8,6 +8,7 @@ const BASE = "https://raw.githubusercontent.com/RoboMaskBoy/bitburner-scripts/ma
 const FILES = [
   "deploy.js", "manager.js", "gather.js", "go.js",
   "solve.js", "hack-worker.js", "first-hack.js", "update.js",
+  "crime-guide.js", "buy-server.js", "exp-worker.js", "augs.js", "run-augs.js",
 ];
 
 export async function main(ns) {
