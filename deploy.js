@@ -1,10 +1,13 @@
-/** 司令塔 v4.1: ネットワーク全体を走査し、root を取って worker を配備する。
- *  使い方: run deploy.js [--quiet]
+/** 司令塔 v4.2: ネットワーク全体を走査し、root を取って worker を配備する。
+ *  使い方: run deploy.js [--quiet] [--exp]
  *  home から scan をたどって全サーバーを列挙する（深さ制限なし）。
  *  ポート開けプログラム（BruteSSH.exe 等）を home に持っていれば、
  *  NUKE の前に自動でポートを開ける。
  *  worker の配備は、自分の Hacking レベルが足りているサーバーだけに行う。
  *  --quiet を付けると報告はログ行き（manager.js からの定期実行用）。
+ *  --exp を付けると経験値モード: 標的を経験値効率（1スレッド秒あたりの
+ *    経験値）で選び、経験値専用 worker（お金を無視して hack を繰り返す）を
+ *    配備する。お金はほぼ増えない代わりに、レベル上げが最速になる。
  *  v4.1: 標的のスコアを本式ベースの定常モデルに差し替えた（検証 2026-11-16）。
  *    本体の式（src/Hacking.ts）を移植し、実機のライブ値で
  *    「整地済みの標的を盗んで戻す1サイクルの稼ぎ ÷ スレッド秒」を計算する。
@@ -19,8 +22,9 @@
  *  @param {NS} ns */
 export async function main(ns) {
   const quiet = ns.args.includes("--quiet");
+  const expMode = ns.args.includes("--exp");
   const say = (msg) => (quiet ? ns.print(msg) : ns.tprint(msg));
-  const worker = "hack-worker.js";
+  const worker = expMode ? "exp-worker.js" : "hack-worker.js";
   const workerRam = ns.getScriptRam(worker, "home");
   const myLevel = ns.getHackingLevel();
   const purchased = new Set([]); // クラウドサーバーを買ったら名前をここに足す
@@ -73,14 +77,19 @@ export async function main(ns) {
     if (purchased.has(host)) continue;
     if (!ns.hasRootAccess(host)) continue;
     if (ns.getServerRequiredHackingLevel(host) > myLevel) continue;
-    if (ns.getServerMaxMoney(host) <= 0) continue;
+    if (!expMode && ns.getServerMaxMoney(host) <= 0) continue;
     const info = targetScore(ns, host, player);
-    if (info.score > 0 && (bestInfo === null || info.score > bestInfo.score)) {
+    const score = expMode ? info.expScore : info.score;
+    if (score > 0 && (bestInfo === null || score > (expMode ? bestInfo.expScore : bestInfo.score))) {
       bestInfo = info;
       bestTarget = host;
     }
   }
-  if (bestTarget) {
+  if (bestTarget && expMode) {
+    say(
+      `標的（経験値モード）: ${bestTarget}（経験値 ${bestInfo.expPer.toFixed(1)}/回 / 成功率 ${Math.round(bestInfo.chance * 100)}% / hack ${bestInfo.t.toFixed(0)}秒）に全火力を集中する`,
+    );
+  } else if (bestTarget) {
     say(
       `標的: ${bestTarget}（最大所持金 $${(ns.getServerMaxMoney(bestTarget) / 1e6).toFixed(2)}m / 成功率 ${Math.round(bestInfo.chance * 100)}% / hack ${bestInfo.t.toFixed(0)}秒）に全火力を集中する`,
     );
@@ -128,10 +137,12 @@ export async function main(ns) {
  *  src/Server/formulas/grow.ts（成長率）の移植。倍率は実機の値を使う。 */
 function targetScore(ns, host, player) {
   const H = player.skills.hacking;
-  const M = ns.getServerMaxMoney(host);
-  const req = ns.getServerRequiredHackingLevel(host);
-  const D = ns.getServerMinSecurityLevel(host);
-  const growth = ns.getServerGrowth(host);
+  const srv = ns.getServer(host);
+  const M = srv.moneyMax;
+  const req = srv.requiredHackingSkill;
+  const D = srv.minDifficulty;
+  const growth = srv.serverGrowth;
+  const expPer = (3 + srv.baseDifficulty * 0.3) * player.mults.hacking_exp;
   const intBonus = 1 + Math.pow(player.skills.intelligence, 0.8) / 600;
 
   const t = (5 * (2.5 * req * D + 500)) / (H + 50) / (player.mults.hacking_speed * intBonus);
@@ -139,15 +150,18 @@ function targetScore(ns, host, player) {
   chance = Math.min(1, Math.max(0, chance));
   let f = (((100 - D) / 100) * (H - (req - 1))) / H / 240 * player.mults.hacking_money;
   f = Math.min(1, Math.max(0, f));
-  if (chance <= 0 || f <= 0) return { score: 0, chance, t };
+  // 経験値モードのスコア: hack を繰り返し、警戒度の相殺に weaken を
+  // 0.04 本（0.002 ÷ 0.05）挟む形で、1スレッド秒あたりの経験値を出す
+  const expScore = chance > 0 ? (expPer * chance) / (1.16 * t) : 0;
+  if (chance <= 0 || f <= 0) return { score: 0, expScore, expPer, chance, t };
 
   const glog =
     Math.min(Math.log1p(0.03 / D), 0.00349388925425578) * (growth / 100) * player.mults.hacking_grow;
-  if (glog <= 0) return { score: 0, chance, t };
+  if (glog <= 0) return { score: 0, expScore, expPer, chance, t };
   const Nh = Math.log(0.5) / Math.log(1 - f); // 所持金を半分盗む hack スレッド数
   const Ng = Math.log(2) / glog; // 倍に戻す grow スレッド数
   const Nw = (0.002 * Nh + 0.004 * Ng) / 0.05; // 警戒度の上昇を相殺する weaken スレッド数
   const threadSeconds = t * (Nh + 3.2 * Ng + 4 * Nw);
   const score = (chance * 0.5 * 0.85 * M) / threadSeconds;
-  return { score, chance, t };
+  return { score, expScore, expPer, chance, t };
 }

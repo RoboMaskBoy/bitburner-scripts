@@ -1,6 +1,8 @@
-/** 定期実行マネージャ v2.1: deploy → solve → gather を順に回し続ける。
- *  使い方: run manager.js [間隔（秒）]   例: run manager.js 60
- *  引数を省略すると 600 秒（10分）。末尾に m を付けると分単位（例: 10m）。
+/** 定期実行マネージャ v2.2: deploy → solve → gather を順に回し続ける。
+ *  使い方: run manager.js [間隔（秒）] [--exp]   例: run manager.js 60
+ *  間隔を省略すると 600 秒（10分）。末尾に m を付けると分単位（例: 10m）。
+ *  --exp を付けると deploy を経験値モードで回す（レベル上げ専用巡回）。
+ *  v2.2: deploy への --exp 引き継ぎに対応。
  *  v2.1: 間隔を秒単位で指定できるようにした（v2 までは分単位）。
  *  1周の内訳:
  *    deploy.js --quiet : 新しく届くようになったサーバーへ worker を配備
@@ -13,16 +15,17 @@
  *  止め方: ターミナルで kill manager.js
  *  @param {NS} ns */
 export async function main(ns) {
-  const raw = String(ns.args[0] ?? "600");
-  const intervalSec = raw.endsWith("m")
-    ? Number(raw.slice(0, -1)) * 60
-    : Number(raw) || 600;
+  const expMode = ns.args.includes("--exp");
+  const rawArg = ns.args.map(String).find((a) => /^\d+m?$/.test(a)) || "600";
+  const intervalSec = rawArg.endsWith("m")
+    ? Number(rawArg.slice(0, -1)) * 60
+    : Number(rawArg) || 600;
   ns.disableLog("sleep");
   ns.disableLog("exec");
   ns.disableLog("isRunning");
 
-  async function runAndWait(file) {
-    const pid = ns.exec(file, "home", 1, "--quiet");
+  async function runAndWait(file, extraArgs = []) {
+    const pid = ns.exec(file, "home", 1, "--quiet", ...extraArgs);
     if (pid === 0) {
       ns.tprint(`manager: ${file} を起動できなかった（home の RAM 不足？）。この周は飛ばす`);
       return;
@@ -32,10 +35,10 @@ export async function main(ns) {
     }
   }
 
-  ns.tprint(`manager v2.1: deploy → solve → gather を ${intervalSec} 秒間隔で巡回します`);
+  ns.tprint(`manager v2.2: deploy → solve → gather を ${intervalSec} 秒間隔で巡回します${expMode ? "（deploy は経験値モード）" : ""}`);
   while (true) {
     const started = Date.now();
-    await runAndWait("deploy.js");
+    await runAndWait("deploy.js", expMode ? ["--exp"] : []);
     await runAndWait("solve.js");
     await runAndWait("gather.js");
     const secs = Math.round((Date.now() - started) / 1000);
