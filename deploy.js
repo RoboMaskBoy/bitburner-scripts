@@ -1,6 +1,7 @@
-/** 司令塔: home の隣接サーバーを走査し、root を取って worker を配備する。
+/** 司令塔 v2: home の隣接サーバーを走査し、root を取って worker を配備する。
  *  使い方: run deploy.js
- *  ポート開けプログラムを持っていない序盤は、ポート0のサーバーだけ root を取る。
+ *  ポート開けプログラム（BruteSSH.exe 等）を home に持っていれば、
+ *  NUKE の前に自動でポートを開ける。
  *  worker の配備は、自分の Hacking レベルが足りているサーバーだけに行う。
  *  @param {NS} ns */
 export async function main(ns) {
@@ -9,12 +10,22 @@ export async function main(ns) {
   const myLevel = ns.getHackingLevel();
   const neighbors = ns.scan("home");
 
+  // 持っているポート開けプログラムの一覧
+  const openers = [
+    ["BruteSSH.exe", (t) => ns.brutessh(t)],
+    ["FTPCrack.exe", (t) => ns.ftpcrack(t)],
+    ["relaySMTP.exe", (t) => ns.relaysmtp(t)],
+    ["HTTPWorm.exe", (t) => ns.httpworm(t)],
+    ["SQLInject.exe", (t) => ns.sqlinject(t)],
+  ].filter(([file]) => ns.fileExists(file, "home"));
+
   for (const target of neighbors) {
-    // root がなければ NUKE を試みる（ポート不足なら次の機会に回す）
+    // root がなければ、まず持っているプログラムでポートを開けてから NUKE
     if (!ns.hasRootAccess(target)) {
+      for (const [, open] of openers) open(target);
       const ports = ns.getServerNumPortsRequired(target);
-      if (ports > 0) {
-        ns.tprint(`${target}: ポートが ${ports} 個必要。今は見送り`);
+      if (openers.length < ports) {
+        ns.tprint(`${target}: ポートが ${ports} 個必要（開けられるのは ${openers.length} 個）。今は見送り`);
         continue;
       }
       ns.nuke(target);
