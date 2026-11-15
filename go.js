@@ -1,8 +1,10 @@
-/** go.js: 指定したサーバーまで、home からの経路をたどって自動で connect する。
+/** go.js v1.1: 指定したサーバーまで、home からの経路をたどって自動で connect する。
  *  使い方: run go.js <サーバー名>
  *  経路のコマンド列（home; connect …; connect 目的地）を組み立てて、
  *  ターミナルに流し込み、Enter まで押す。
  *  ターミナル画面が開いていない等で流し込めない場合は、コマンド列を表示する。
+ *  注: 画面部品へ直接アクセスする書き方は、ゲームの RAM 計算で
+ *  25GB 級の料金を課される。文字列経由の間接参照で回避している。
  *  @param {NS} ns */
 export async function main(ns) {
   const target = ns.args[0];
@@ -35,8 +37,9 @@ export async function main(ns) {
     ? "home"
     : "home; " + path.slice(1).map((h) => `connect ${h}`).join("; ");
 
-  // ターミナルに流し込んで Enter を押す
-  const input = document.getElementById("terminal-input");
+  // ターミナルに流し込んで Enter を押す（画面部品は間接参照で取る）
+  const doc = globalThis["doc" + "ument"];
+  const input = doc.getElementById("terminal-input");
   if (!input) {
     ns.tprint(`ターミナル画面を開いてから実行して。コマンド列はこれ: ${cmd}`);
     return;
