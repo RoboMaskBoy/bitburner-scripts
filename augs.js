@@ -14,8 +14,8 @@
  *  NeuroFlux Governor はレベル制: 価格・必要評価とも ×1.14^レベル。
  *  @param {NS} ns */
 
-// 評価の記録値（2026-11-16 01:22 の Factions 画面より）。増えたら引数で上書き。
-const REPS = { CyberSec: 19423, NiteSec: 1.375, "Sector-12": 1455, "Slum Snakes": 140.708 };
+// 評価の記録値（2026-11-16 01:35 のセーブデータより）。増えたら引数で上書き。
+const REPS = { CyberSec: 19452, NiteSec: 31.04, "Sector-12": 1485, "Slum Snakes": 170.37 };
 const REP_KEYS = { CS: "CyberSec", NS: "NiteSec", S12: "Sector-12", SS: "Slum Snakes" };
 // 所持済み Augment（2026-11-16 時点: なし。インストールしたら愛那が更新する）
 const OWNED = [];
