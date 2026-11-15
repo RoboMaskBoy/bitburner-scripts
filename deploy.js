@@ -1,17 +1,18 @@
-/** 司令塔 v3.1: ネットワーク全体を走査し、root を取って worker を配備する。
+/** 司令塔 v3.2: ネットワーク全体を走査し、root を取って worker を配備する。
  *  使い方: run deploy.js
  *  home から scan をたどって全サーバーを列挙する（深さ制限なし）。
  *  ポート開けプログラム（BruteSSH.exe 等）を home に持っていれば、
  *  NUKE の前に自動でポートを開ける。
  *  worker の配備は、自分の Hacking レベルが足りているサーバーだけに行う。
- *  購入したクラウドサーバーは対象外（置き場所として温存する）。
+ *  v3.2: cloud.getServerNames（RAM 1.05GB）を外し、home の RAM に収まるようにした。
+ *    クラウドサーバーを買ったら、その名前を下の EXCLUDE に足すこと（0GB 方式）。
  *  v3.1: 3.0.0 で削除された getPurchasedServers を cloud.getServerNames に差し替え。
  *  @param {NS} ns */
 export async function main(ns) {
   const worker = "hack-worker.js";
   const workerRam = ns.getScriptRam(worker, "home");
   const myLevel = ns.getHackingLevel();
-  const purchased = new Set(ns.cloud.getServerNames());
+  const purchased = new Set([]); // クラウドサーバーを買ったら名前をここに足す
 
   // home を起点にネットワーク全体を列挙する
   const seen = new Set(["home"]);
