@@ -1,14 +1,17 @@
-/** 司令塔 v3.2: ネットワーク全体を走査し、root を取って worker を配備する。
- *  使い方: run deploy.js
+/** 司令塔 v3.3: ネットワーク全体を走査し、root を取って worker を配備する。
+ *  使い方: run deploy.js [--quiet]
  *  home から scan をたどって全サーバーを列挙する（深さ制限なし）。
  *  ポート開けプログラム（BruteSSH.exe 等）を home に持っていれば、
  *  NUKE の前に自動でポートを開ける。
  *  worker の配備は、自分の Hacking レベルが足りているサーバーだけに行う。
+ *  --quiet を付けると報告はログ行き（manager.js からの定期実行用）。
  *  v3.2: cloud.getServerNames（RAM 1.05GB）を外し、home の RAM に収まるようにした。
  *    クラウドサーバーを買ったら、その名前を下の EXCLUDE に足すこと（0GB 方式）。
  *  v3.1: 3.0.0 で削除された getPurchasedServers を cloud.getServerNames に差し替え。
  *  @param {NS} ns */
 export async function main(ns) {
+  const quiet = ns.args.includes("--quiet");
+  const say = (msg) => (quiet ? ns.print(msg) : ns.tprint(msg));
   const worker = "hack-worker.js";
   const workerRam = ns.getScriptRam(worker, "home");
   const myLevel = ns.getHackingLevel();
@@ -53,7 +56,7 @@ export async function main(ns) {
         continue; // ポート不足は静かに見送る（報告は最後の集計のみ）
       }
       ns.nuke(target);
-      ns.tprint(`${target}: NUKE 成功、root 取得`);
+      say(`${target}: NUKE 成功、root 取得`);
     }
     if (ns.hasRootAccess(target)) rooted++;
 
@@ -74,7 +77,7 @@ export async function main(ns) {
     ns.exec(worker, target, threads, target);
     deployed++;
     totalThreads += threads;
-    ns.tprint(`${target}: worker を ${threads} スレッドで配備`);
+    say(`${target}: worker を ${threads} スレッドで配備`);
   }
-  ns.tprint(`配備おわり: 走査 ${all.length} 台 / root ${rooted} 台 / worker 配備 ${deployed} 台・${totalThreads} スレッド`);
+  say(`配備おわり: 走査 ${all.length} 台 / root ${rooted} 台 / worker 配備 ${deployed} 台・${totalThreads} スレッド`);
 }
