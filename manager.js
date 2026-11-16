@@ -1,25 +1,33 @@
-/** 定期実行マネージャ v2.2: deploy → solve → gather を順に回し続ける。
- *  使い方: run manager.js [間隔（秒）] [--exp]   例: run manager.js 60
+/** 定期実行マネージャ v2.3: deploy → solve → gather（→ shop）を順に回し続ける。
+ *  使い方: run manager.js [間隔（秒）] [--exp] [--shop] [--reserve <百万$>] [--max <GB>]
  *  間隔を省略すると 600 秒（10分）。末尾に m を付けると分単位（例: 10m）。
  *  --exp を付けると deploy を経験値モードで回す（レベル上げ専用巡回）。
+ *  --shop を付けると、1周の最後に buy-server.js --auto を1回呼ぶ
+ *  （リザーブ超えの余剰でクラウドサーバーを購入/増設。既定はオフ）。
+ *  --reserve / --max は shop の判断にそのまま渡る（既定 300 / 8192）。
+ *  v2.3: shop 工程（buy-server.js --auto）を追加。
  *  v2.2: deploy への --exp 引き継ぎに対応。
  *  v2.1: 間隔を秒単位で指定できるようにした（v2 までは分単位）。
- *  1周の内訳:
- *    deploy.js --quiet : 新しく届くようになったサーバーへ worker を配備
- *    solve.js  --quiet : 湧いたコーディング契約のうち対応済みの種類を解く
- *    gather.js --quiet : 新しく転がった .lit 等を home に回収
  *  どれも冪等なので、定期実行しても壊れない。同時には走らせず、
- *  前のスクリプトが終わってから次を起動する（home の RAM 32GB に収めるため）。
+ *  前のスクリプトが終わってから次を起動する（home の RAM に収めるため）。
  *  各スクリプトの報告はそれぞれのログに出る。manager は1周ごとに
  *  終了の1行だけをターミナルへ出す。
- *  止め方: ターミナルで kill manager.js
+ *  止め方: 引数が違うと kill manager.js では止まらない。ps で PID を
+ *  見て kill <PID> する。
  *  @param {NS} ns */
 export async function main(ns) {
-  const expMode = ns.args.includes("--exp");
-  const rawArg = ns.args.map(String).find((a) => /^\d+m?$/.test(a)) || "600";
+  const strArgs = ns.args.map(String);
+  const expMode = strArgs.includes("--exp");
+  const shopMode = strArgs.includes("--shop");
+  const rawArg = strArgs.find((a) => /^\d+m?$/.test(a)) || "600";
   const intervalSec = rawArg.endsWith("m")
     ? Number(rawArg.slice(0, -1)) * 60
     : Number(rawArg) || 600;
+  const shopArgs = ["--auto"];
+  for (const flag of ["--reserve", "--max"]) {
+    const i = strArgs.indexOf(flag);
+    if (i >= 0 && i + 1 < strArgs.length) shopArgs.push(flag, strArgs[i + 1]);
+  }
   ns.disableLog("sleep");
   ns.disableLog("exec");
   ns.disableLog("isRunning");
@@ -35,12 +43,13 @@ export async function main(ns) {
     }
   }
 
-  ns.tprint(`manager v2.2: deploy → solve → gather を ${intervalSec} 秒間隔で巡回します${expMode ? "（deploy は経験値モード）" : ""}`);
+  ns.tprint(`manager v2.3: deploy → solve → gather${shopMode ? " → shop" : ""} を ${intervalSec} 秒間隔で巡回します${expMode ? "（deploy は経験値モード）" : ""}`);
   while (true) {
     const started = Date.now();
     await runAndWait("deploy.js", expMode ? ["--exp"] : []);
     await runAndWait("solve.js");
     await runAndWait("gather.js");
+    if (shopMode) await runAndWait("buy-server.js", shopArgs);
     const secs = Math.round((Date.now() - started) / 1000);
     ns.tprint(`manager: 巡回1周が終わった（${secs} 秒）。詳細は各スクリプトのログへ`);
     await ns.sleep(intervalSec * 1000);
