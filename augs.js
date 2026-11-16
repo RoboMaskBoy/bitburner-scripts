@@ -14,12 +14,21 @@
  *  NeuroFlux Governor はレベル制: 価格・必要評価とも ×1.14^レベル。
  *  @param {NS} ns */
 
-// 評価の記録値（2026-11-16 01:35 のセーブデータより）。増えたら引数で上書き。
-const REPS = { CyberSec: 19452, NiteSec: 31.04, "Sector-12": 1485, "Slum Snakes": 170.37 };
+// 評価の記録値（2026-11-16 20:25 の銀行セーブより）。増えたら引数で上書き。
+const REPS = { CyberSec: 712.87, NiteSec: 2736.66, "Sector-12": 3420.13, "Slum Snakes": 172.75 };
 const REP_KEYS = { CS: "CyberSec", NS: "NiteSec", S12: "Sector-12", SS: "Slum Snakes" };
-// 所持済み Augment（2026-11-16 時点: なし。インストールしたら愛那が更新する）
-const OWNED = [];
-const NF_LEVEL = 0; // NeuroFlux Governor の現在レベル
+// 所持済み Augment（2026-11-16 13:06 にインストールした8個）
+const OWNED = [
+  "Cranial Signal Processors - Gen I",
+  "Cranial Signal Processors - Gen II",
+  "Neurotrainer II",
+  "BitWire",
+  "Synaptic Enhancement Implant",
+  "Neurotrainer I",
+  "Wired Reflexes",
+  "NeuroFlux Governor",
+];
+const NF_LEVEL = 1; // NeuroFlux Governor の現在レベル
 const NF = "NeuroFlux Governor";
 
 // [名前, 派閥, 基準価格, 必要評価, 前提]
